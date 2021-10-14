@@ -40,6 +40,7 @@ class MyServerConnection implements Runnable {
 	private BufferedWriter writer = null;
 
 	private static ArrayList<MyServerConnection> connections = new ArrayList<>();
+	private static String message;
 
 	MyServerConnection(Socket client) throws IOException {
 		this.client = client;
@@ -54,35 +55,53 @@ class MyServerConnection implements Runnable {
 	}
 
 	public void run() {
-		String str;
+		String header;
 		String dummy;
+		char[] buffer = new char[100];
+		byte method = 0;
 
 		try {
 			try {
 				while (true) {
-					dummy = str = "";
+					dummy = header = "";
 
 					do {
 						dummy = this.reader.readLine();
 						if (dummy == null) {
 							throw new IOException("client is closed");
 						}
-						str += dummy + "\n";
+
+						if (method == 0) {
+							if (dummy.substring(0, 3).equals("GET")) {
+								method = 1;
+							} else {
+								method = -1;
+							}
+						}
+
+						header += dummy + "\n";
 					} while (!dummy.equals(""));
 
-					System.out.println(str);
+					System.out.println(header);
 
-					for (MyServerConnection connection : MyServerConnection.connections) {
-						if (this.thread.getName().equals(connection.thread.getName())) {
-							str = "HTTP/1.1 200 OK\r\n" + "Server: YarServer/2009-09-09\r\n"
-									+ "Content-Type: text/html\r\n" + "Content-Length: "
-									+ "{\"test\":\"test\"}".length() + "\r\n" + "Connection: close\r\n\r\n";
-							connection.writer.write(str + "\n\"test\":\"test\"" + "\n");
+					if (method == -1) {
+						int length = this.reader.read(buffer);
+						message = new String(buffer, 0, length);
+
+						System.out.println(message);
+						for (MyServerConnection connection : MyServerConnection.connections) {
+							if (this.thread.getName().equals(connection.thread.getName())) {
+								header = "HTTP/1.1 200 OK\r\n" + "Server: YarServer/2009-09-09\r\n"
+										+ "Access-Control-Allow-Origin: *\r\n" + "Content-Type: application/json\r\n"
+										+ "Content-Length: " + message.length() + "\r\n"
+										+ "Connection: keep-alive\r\n\r\n";
+								connection.writer.write(header + message);
+								connection.writer.flush();
+								continue;
+							}
+							connection.writer.write("(" + this.thread.getName() + "). " + header + "\n");
 							connection.writer.flush();
-							continue;
 						}
-						connection.writer.write("(" + this.thread.getName() + "). " + str + "\n");
-						connection.writer.flush();
 					}
 				}
 			} finally {
